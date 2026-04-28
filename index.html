@@ -242,6 +242,7 @@
           <option value="kmeans++" selected>k-means++ (smart)</option>
           <option value="random">Random points</option>
           <option value="forgy">Forgy (random data points)</option>
+          <option value="manual">Manual — click to place</option>
         </select>
       </label>
     </div>
@@ -320,6 +321,8 @@ window.addEventListener("resize", resizeCanvas);
 
 function w2sX(x) { return (x - WORLD.minX) / (WORLD.maxX - WORLD.minX) * (canvas.clientWidth || 900); }
 function w2sY(y) { return (1 - (y - WORLD.minY) / (WORLD.maxY - WORLD.minY)) * (canvas.clientHeight || 600); }
+function s2wX(sx) { return WORLD.minX + (sx / (canvas.clientWidth  || 900)) * (WORLD.maxX - WORLD.minX); }
+function s2wY(sy) { return WORLD.minY + (1 - sy / (canvas.clientHeight || 600)) * (WORLD.maxY - WORLD.minY); }
 
 // ---------- PRNG (seeded) for reproducible datasets ----------
 function mulberry32(seed) {
@@ -439,8 +442,13 @@ const state = {
   initSeed: 1,
   playing: false,
   playTimer: null,
-  playSpeed: 600
+  playSpeed: 600,
+  dragIdx: null
 };
+
+function manualIncomplete() {
+  return state.initMethod === "manual" && state.centroids.length < state.k;
+}
 
 function dist2(a, b) {
   const dx = a.x - b.x, dy = a.y - b.y;
@@ -453,7 +461,10 @@ function initCentroids() {
   const pts = state.points;
   let cs = [];
 
-  if (state.initMethod === "random") {
+  if (state.initMethod === "manual") {
+    // Manual mode: keep any centroids already placed (up to k), wait for the rest.
+    cs = (state.centroids || []).slice(0, k).map(c => ({ x: c.x, y: c.y }));
+  } else if (state.initMethod === "random") {
     for (let i = 0; i < k; i++) {
       cs.push({ x: 10 + rng() * 80, y: 10 + rng() * 80 });
     }
@@ -659,9 +670,14 @@ function updateUI() {
   const status = $("status");
   status.classList.toggle("converged", state.phase === "done");
   let pill = "", msg = "";
-  if (state.phase === "init") {
+  if (manualIncomplete()) {
+    const placed = state.centroids.length;
+    pill = `<span class="step-pill assign">Place centroids</span>`;
+    msg = `Click on the canvas to place centroid <b>${placed + 1}</b> of <b>${state.k}</b>. (You can drag any centroid to reposition it later.)`;
+  } else if (state.phase === "init") {
     pill = `<span class="step-pill">Init</span>`;
-    msg = `Centroids placed via <b>${state.initMethod}</b>. Click <b>Next Step</b> to assign points.`;
+    const how = state.initMethod === "manual" ? "your manual placement" : state.initMethod;
+    msg = `Centroids placed via <b>${how}</b>. Click <b>Next Step</b> to assign points.${state.initMethod === "manual" ? " You can still drag any centroid before stepping." : ""}`;
   } else if (state.phase === "assign") {
     pill = `<span class="step-pill update">Just updated</span>`;
     const r = state.reassignedLast;
@@ -677,9 +693,13 @@ function updateUI() {
   }
   status.innerHTML = pill + " " + msg;
 
-  $("btn-step").disabled = state.phase === "done";
-  $("btn-iter").disabled = state.phase === "done";
-  $("btn-play").disabled = state.phase === "done";
+  const blocked = state.phase === "done" || manualIncomplete();
+  $("btn-step").disabled = blocked;
+  $("btn-iter").disabled = blocked;
+  $("btn-play").disabled = blocked;
+  canvas.style.cursor = state.initMethod === "manual"
+    ? (state.dragIdx != null ? "grabbing" : "crosshair")
+    : "default";
 
   // Legend
   const legend = $("legend");
@@ -699,6 +719,9 @@ function updateUI() {
 function regenerateData() {
   const gen = PRESETS[state.preset];
   state.points = gen(mulberry32(state.dataSeed));
+  // New data invalidates any prior placements (manual mode).
+  state.centroids = [];
+  state.prevCentroids = [];
   initCentroids();
   draw();
 }
@@ -733,6 +756,51 @@ function startPlay() {
   }, state.playSpeed);
 }
 
+// ---------- Canvas mouse: click to place / drag to move (manual init only) ----------
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  if (state.initMethod !== "manual") return;
+  const { sx, sy } = canvasPos(e);
+
+  // Hit-test existing centroids first (drag has priority over add)
+  for (let i = 0; i < state.centroids.length; i++) {
+    const c = state.centroids[i];
+    const dx = w2sX(c.x) - sx, dy = w2sY(c.y) - sy;
+    if (dx * dx + dy * dy < 16 * 16) {
+      state.dragIdx = i;
+      draw();
+      return;
+    }
+  }
+
+  // Add a new centroid if there's room
+  if (state.centroids.length < state.k) {
+    const wx = clamp(s2wX(sx), 0, 100);
+    const wy = clamp(s2wY(sy), 0, 100);
+    state.centroids.push({ x: wx, y: wy });
+    state.prevCentroids = state.centroids.map(c => ({ x: c.x, y: c.y }));
+    draw();
+  }
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (state.dragIdx == null) return;
+  const { sx, sy } = canvasPos(e);
+  const wx = clamp(s2wX(sx), 0, 100);
+  const wy = clamp(s2wY(sy), 0, 100);
+  state.centroids[state.dragIdx] = { x: wx, y: wy };
+  state.prevCentroids[state.dragIdx] = { x: wx, y: wy };
+  draw();
+});
+
+function endDrag() { if (state.dragIdx != null) { state.dragIdx = null; draw(); } }
+canvas.addEventListener("mouseup", endDrag);
+canvas.addEventListener("mouseleave", endDrag);
+
 // Wire up controls
 $("preset").addEventListener("change", (e) => {
   stopPlay();
@@ -748,6 +816,9 @@ $("k").addEventListener("input", (e) => {
 $("init").addEventListener("change", (e) => {
   state.initMethod = e.target.value;
   stopPlay();
+  // Switching init method always starts fresh; no carry-over of prior positions.
+  state.centroids = [];
+  state.prevCentroids = [];
   initCentroids();
   draw();
 });
@@ -758,7 +829,13 @@ $("btn-newdata").addEventListener("click", () => {
 });
 $("btn-newinit").addEventListener("click", () => {
   stopPlay();
-  state.initSeed = (state.initSeed * 1103515245 + 12345) & 0x7fffffff;
+  if (state.initMethod === "manual") {
+    // In manual mode, "New Init" means: clear placements and let me drop them again.
+    state.centroids = [];
+    state.prevCentroids = [];
+  } else {
+    state.initSeed = (state.initSeed * 1103515245 + 12345) & 0x7fffffff;
+  }
   initCentroids();
   draw();
 });
