@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>K-Means Clustering — Interactive Demo</title>
+<style>
+  :root {
+    --bg: #0f1220;
+    --panel: #161a2e;
+    --panel-2: #1d2240;
+    --text: #e8ecff;
+    --muted: #9aa3c7;
+    --accent: #6ea8ff;
+    --accent-2: #ffd166;
+    --good: #5fd3a0;
+    --warn: #ff8a8a;
+    --grid: #232944;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 18px 24px 8px;
+    border-bottom: 1px solid #232944;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 22px;
+    letter-spacing: 0.2px;
+  }
+  header p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    padding: 16px 24px 24px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .canvas-wrap {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 1px 0 #232944 inset;
+    position: relative;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+    background: #0b0f1d;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    width: 12px; height: 12px; border-radius: 3px;
+    display: inline-block;
+  }
+  .panel {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+  }
+  .row > * { flex: 1; }
+  button, select {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid #2c335a;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  button:hover { background: #242a4f; border-color: #3a4274; }
+  button.primary {
+    background: linear-gradient(180deg, #3b6dd1, #2b54a3);
+    border-color: #4d7fe0;
+    color: white;
+  }
+  button.primary:hover { background: linear-gradient(180deg, #4677dc, #2f5ab1); }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  input[type="range"] { width: 100%; }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat {
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .stat .k {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .stat .v {
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+  .status {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #0e2436;
+    border: 1px solid #1a3b5a;
+    color: #b9d8ff;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .status.converged {
+    background: #0f2e22;
+    border-color: #1f5b3f;
+    color: #b8f0d0;
+  }
+  .step-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #2b3257;
+    color: #cdd6ff;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .step-pill.assign { background: #3a2a55; color: #e1c4ff; }
+  .step-pill.update { background: #2a4a45; color: #b9f0e2; }
+  .step-pill.done { background: #1f5b3f; color: #b8f0d0; }
+  details {
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  details summary {
+    cursor: pointer;
+    color: var(--text);
+    font-weight: 500;
+  }
+  details p { margin: 6px 0 0; line-height: 1.5; }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 6px 24px 18px;
+  }
+  @media (max-width: 880px) {
+    main { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>K-Means Clustering — Interactive Demo</h1>
+  <p>Step through the algorithm one phase at a time. Watch points get reassigned, then watch centroids move.</p>
+</header>
+
+<main>
+  <section class="canvas-wrap">
+    <canvas id="cv" width="900" height="600"></canvas>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <aside class="panel">
+    <div>
+      <h2>Dataset</h2>
+      <label>
+        Preset
+        <select id="preset">
+          <option value="easy">Easy — 3 well-separated blobs</option>
+          <option value="medium">Medium — 4 closer blobs</option>
+          <option value="hard">Hard — 5 overlapping blobs</option>
+          <option value="elongated">Challenging — elongated clusters</option>
+          <option value="uneven">Challenging — uneven sizes &amp; densities</option>
+          <option value="moons">Tricky — two moons (non-convex)</option>
+        </select>
+      </label>
+      <div class="row" style="margin-top:8px">
+        <button id="btn-newdata">New Data</button>
+        <button id="btn-newinit">New Init</button>
+      </div>
+    </div>
+
+    <div>
+      <h2>Algorithm</h2>
+      <label>
+        K (number of clusters): <span id="k-val">3</span>
+        <input id="k" type="range" min="2" max="8" step="1" value="3" />
+      </label>
+      <label style="margin-top:6px">
+        Initialization
+        <select id="init">
+          <option value="kmeans++" selected>k-means++ (smart)</option>
+          <option value="random">Random points</option>
+          <option value="forgy">Forgy (random data points)</option>
+        </select>
+      </label>
+    </div>
+
+    <div>
+      <h2>Step Control</h2>
+      <div class="row">
+        <button id="btn-step" class="primary">Next Step</button>
+        <button id="btn-iter">Full Iteration</button>
+      </div>
+      <div class="row">
+        <button id="btn-play">▶ Auto-play</button>
+        <button id="btn-reset" class="ghost">Reset</button>
+      </div>
+      <label style="margin-top:6px">
+        Auto-play speed: <span id="speed-val">600 ms</span>
+        <input id="speed" type="range" min="100" max="1500" step="50" value="600" />
+      </label>
+    </div>
+
+    <div>
+      <h2>State</h2>
+      <div id="status" class="status">Ready. Click <b>Next Step</b> to begin.</div>
+      <div class="stat-grid" style="margin-top:8px">
+        <div class="stat"><div class="k">Iteration</div><div class="v" id="stat-iter">0</div></div>
+        <div class="stat"><div class="k">Phase</div><div class="v" id="stat-phase">—</div></div>
+        <div class="stat"><div class="k">Inertia (WCSS)</div><div class="v" id="stat-inertia">—</div></div>
+        <div class="stat"><div class="k">Reassignments</div><div class="v" id="stat-reassign">—</div></div>
+      </div>
+    </div>
+
+    <details>
+      <summary>How does K-means work?</summary>
+      <p>
+        <b>1. Initialize:</b> place K centroids (here using k-means++ by default).<br>
+        <b>2. Assign:</b> each point joins the cluster of its nearest centroid (Euclidean distance).<br>
+        <b>3. Update:</b> each centroid moves to the mean of its assigned points.<br>
+        Repeat 2 &amp; 3 until no point changes cluster (convergence).
+      </p>
+      <p>
+        <b>Inertia</b> is the sum of squared distances from points to their centroid. K-means minimizes it — but only finds a local minimum, so initialization matters.
+      </p>
+    </details>
+  </aside>
+</main>
+
+<footer>Built for teaching · vanilla JS · no dependencies</footer>
+
+<script>
+"use strict";
+
+// ---------- Color palette for clusters ----------
+const PALETTE = [
+  "#6ea8ff", "#ffd166", "#ef476f", "#06d6a0",
+  "#c77dff", "#ff9f1c", "#80ed99", "#f78fb3"
+];
+
+// ---------- Canvas + data world ----------
+const canvas = document.getElementById("cv");
+const ctx = canvas.getContext("2d");
+
+// World coordinate range
+const WORLD = { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 900;
+  const cssH = Math.round(cssW * 600 / 900);
+  canvas.style.height = cssH + "px";
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener("resize", resizeCanvas);
+
+function w2sX(x) { return (x - WORLD.minX) / (WORLD.maxX - WORLD.minX) * (canvas.clientWidth || 900); }
+function w2sY(y) { return (1 - (y - WORLD.minY) / (WORLD.maxY - WORLD.minY)) * (canvas.clientHeight || 600); }
+
+// ---------- PRNG (seeded) for reproducible datasets ----------
+function mulberry32(seed) {
+  return function() {
+    let t = (seed += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gaussian(rng) {
+  // Box-Muller
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// ---------- Dataset generators ----------
+function genBlobs(rng, centers, sigmas, counts) {
+  const pts = [];
+  for (let i = 0; i < centers.length; i++) {
+    const [cx, cy] = centers[i];
+    const s = sigmas[i];
+    const n = counts[i];
+    for (let j = 0; j < n; j++) {
+      pts.push({
+        x: clamp(cx + gaussian(rng) * s, 2, 98),
+        y: clamp(cy + gaussian(rng) * s, 2, 98),
+        cluster: -1
+      });
+    }
+  }
+  return pts;
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+const PRESETS = {
+  easy: (rng) => genBlobs(rng,
+    [[20, 75], [80, 75], [50, 20]],
+    [4, 4, 4],
+    [60, 60, 60]),
+  medium: (rng) => genBlobs(rng,
+    [[28, 70], [70, 72], [30, 28], [72, 30]],
+    [6, 6, 6, 6],
+    [55, 55, 55, 55]),
+  hard: (rng) => genBlobs(rng,
+    [[35, 65], [55, 60], [70, 50], [40, 35], [60, 30]],
+    [9, 9, 9, 9, 9],
+    [50, 50, 50, 50, 50]),
+  elongated: (rng) => {
+    const pts = [];
+    for (let i = 0; i < 80; i++) {
+      const t = rng();
+      pts.push({ x: clamp(15 + t * 70 + gaussian(rng) * 1.5, 2, 98),
+                 y: clamp(70 + gaussian(rng) * 2, 2, 98), cluster: -1 });
+    }
+    for (let i = 0; i < 80; i++) {
+      const t = rng();
+      pts.push({ x: clamp(15 + t * 70 + gaussian(rng) * 1.5, 2, 98),
+                 y: clamp(45 + gaussian(rng) * 2, 2, 98), cluster: -1 });
+    }
+    for (let i = 0; i < 80; i++) {
+      const t = rng();
+      pts.push({ x: clamp(15 + t * 70 + gaussian(rng) * 1.5, 2, 98),
+                 y: clamp(20 + gaussian(rng) * 2, 2, 98), cluster: -1 });
+    }
+    return pts;
+  },
+  uneven: (rng) => {
+    return [
+      ...genBlobs(rng, [[25, 75]], [3], [30]),
+      ...genBlobs(rng, [[70, 70]], [10], [120]),
+      ...genBlobs(rng, [[35, 25]], [5], [50]),
+      ...genBlobs(rng, [[75, 25]], [2], [15])
+    ];
+  },
+  moons: (rng) => {
+    const pts = [];
+    for (let i = 0; i < 100; i++) {
+      const t = Math.PI * (i / 100);
+      pts.push({
+        x: clamp(35 + 25 * Math.cos(t) + gaussian(rng) * 1.5, 2, 98),
+        y: clamp(45 + 18 * Math.sin(t) + gaussian(rng) * 1.5, 2, 98),
+        cluster: -1
+      });
+    }
+    for (let i = 0; i < 100; i++) {
+      const t = Math.PI * (i / 100);
+      pts.push({
+        x: clamp(60 + 25 * Math.cos(t) + gaussian(rng) * 1.5, 2, 98),
+        y: clamp(55 - 18 * Math.sin(t) + gaussian(rng) * 1.5, 2, 98),
+        cluster: -1
+      });
+    }
+    return pts;
+  }
+};
+
+const PRESET_DEFAULT_K = {
+  easy: 3, medium: 4, hard: 5, elongated: 3, uneven: 4, moons: 2
+};
+
+// ---------- K-means state machine ----------
+const state = {
+  points: [],
+  centroids: [],     // [{x, y}]
+  prevCentroids: [], // for drawing motion arrows after update
+  k: 3,
+  iter: 0,
+  phase: "init",     // "init" | "assign" | "update" | "done"
+  reassignedLast: null, // number of points whose cluster changed in last assign
+  inertia: null,
+  preset: "easy",
+  initMethod: "kmeans++",
+  dataSeed: 1,
+  initSeed: 1,
+  playing: false,
+  playTimer: null,
+  playSpeed: 600
+};
+
+function dist2(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+function initCentroids() {
+  const rng = mulberry32(state.initSeed);
+  const k = state.k;
+  const pts = state.points;
+  let cs = [];
+
+  if (state.initMethod === "random") {
+    for (let i = 0; i < k; i++) {
+      cs.push({ x: 10 + rng() * 80, y: 10 + rng() * 80 });
+    }
+  } else if (state.initMethod === "forgy") {
+    const idxs = new Set();
+    while (idxs.size < k && idxs.size < pts.length) {
+      idxs.add(Math.floor(rng() * pts.length));
+    }
+    cs = [...idxs].map(i => ({ x: pts[i].x, y: pts[i].y }));
+  } else {
+    // k-means++
+    const first = Math.floor(rng() * pts.length);
+    cs.push({ x: pts[first].x, y: pts[first].y });
+    while (cs.length < k) {
+      const d2 = pts.map(p => Math.min(...cs.map(c => dist2(p, c))));
+      const sum = d2.reduce((a, b) => a + b, 0);
+      let r = rng() * sum;
+      let chosen = pts.length - 1;
+      for (let i = 0; i < pts.length; i++) {
+        r -= d2[i];
+        if (r <= 0) { chosen = i; break; }
+      }
+      cs.push({ x: pts[chosen].x, y: pts[chosen].y });
+    }
+  }
+  state.centroids = cs;
+  state.prevCentroids = cs.map(c => ({ x: c.x, y: c.y }));
+  for (const p of pts) p.cluster = -1;
+  state.iter = 0;
+  state.phase = "init";
+  state.reassignedLast = null;
+  state.inertia = null;
+}
+
+function assignStep() {
+  let changed = 0;
+  let inertia = 0;
+  for (const p of state.points) {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < state.centroids.length; i++) {
+      const d = dist2(p, state.centroids[i]);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (p.cluster !== best) changed++;
+    p.cluster = best;
+    inertia += bestD;
+  }
+  state.reassignedLast = changed;
+  state.inertia = inertia;
+  // If nothing was reassigned, centroids would not move — declare converged.
+  state.phase = (state.iter > 0 && changed === 0) ? "done" : "update";
+}
+
+function updateStep() {
+  state.prevCentroids = state.centroids.map(c => ({ x: c.x, y: c.y }));
+  const k = state.centroids.length;
+  const sums = Array.from({ length: k }, () => ({ x: 0, y: 0, n: 0 }));
+  for (const p of state.points) {
+    if (p.cluster < 0) continue;
+    const s = sums[p.cluster];
+    s.x += p.x; s.y += p.y; s.n += 1;
+  }
+  for (let i = 0; i < k; i++) {
+    if (sums[i].n > 0) {
+      state.centroids[i] = { x: sums[i].x / sums[i].n, y: sums[i].y / sums[i].n };
+    }
+    // empty cluster: leave centroid where it was
+  }
+  state.iter += 1;
+  state.phase = "assign";
+}
+
+function nextStep() {
+  if (state.phase === "done") return false;
+  if (state.phase === "init" || state.phase === "assign") {
+    assignStep();
+  } else if (state.phase === "update") {
+    updateStep();
+  }
+  return state.phase !== "done";
+}
+
+function fullIteration() {
+  // Run until back to "assign" phase boundary, or done.
+  // From any phase, do up to 2 substeps.
+  const start = state.iter;
+  let safety = 0;
+  while (state.phase !== "done" && state.iter === start && safety < 4) {
+    nextStep();
+    safety++;
+  }
+}
+
+// ---------- Drawing ----------
+function drawGrid() {
+  const W = canvas.clientWidth || 900;
+  const H = canvas.clientHeight || 600;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "#1a1f38";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 10; i++) {
+    const x = w2sX(i * 10);
+    const y = w2sY(i * 10);
+    ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    ctx.moveTo(0, y); ctx.lineTo(W, y);
+  }
+  ctx.stroke();
+}
+
+function drawPoints() {
+  const r = 4;
+  for (const p of state.points) {
+    const color = p.cluster < 0 ? "#5c6593" : PALETTE[p.cluster % PALETTE.length];
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(w2sX(p.x), w2sY(p.y), r, 0, Math.PI * 2);
+    ctx.fill();
+    if (p.cluster >= 0) {
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawCentroids() {
+  for (let i = 0; i < state.centroids.length; i++) {
+    const c = state.centroids[i];
+    const prev = state.prevCentroids[i];
+    const color = PALETTE[i % PALETTE.length];
+
+    // motion arrow (prev -> current) when in "assign" phase right after an update
+    if (prev && (prev.x !== c.x || prev.y !== c.y) && state.phase === "assign") {
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(w2sX(prev.x), w2sY(prev.y));
+      ctx.lineTo(w2sX(c.x), w2sY(c.y));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Centroid: large filled diamond with white outline
+    const cx = w2sX(c.x), cy = w2sY(c.y);
+    const s = 11;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s);
+    ctx.lineTo(cx + s, cy);
+    ctx.lineTo(cx, cy + s);
+    ctx.lineTo(cx - s, cy);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "white";
+    ctx.stroke();
+
+    // index label
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    ctx.font = "bold 11px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(i + 1), cx, cy + 0.5);
+  }
+}
+
+function drawAssignmentLines() {
+  // Light lines from each point to its centroid — shown right after assign
+  if (state.phase !== "update") return;
+  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const p of state.points) {
+    if (p.cluster < 0) continue;
+    const c = state.centroids[p.cluster];
+    ctx.moveTo(w2sX(p.x), w2sY(p.y));
+    ctx.lineTo(w2sX(c.x), w2sY(c.y));
+  }
+  ctx.stroke();
+}
+
+function draw() {
+  drawGrid();
+  drawAssignmentLines();
+  drawPoints();
+  drawCentroids();
+  updateUI();
+}
+
+// ---------- UI bindings ----------
+const $ = id => document.getElementById(id);
+
+function updateUI() {
+  $("stat-iter").textContent = state.iter;
+  $("stat-phase").textContent = ({
+    init: "Init", assign: "Assign", update: "Update", done: "Done"
+  })[state.phase];
+  $("stat-inertia").textContent = state.inertia == null ? "—" : state.inertia.toFixed(1);
+  $("stat-reassign").textContent = state.reassignedLast == null ? "—" : state.reassignedLast;
+
+  const status = $("status");
+  status.classList.toggle("converged", state.phase === "done");
+  let pill = "", msg = "";
+  if (state.phase === "init") {
+    pill = `<span class="step-pill">Init</span>`;
+    msg = `Centroids placed via <b>${state.initMethod}</b>. Click <b>Next Step</b> to assign points.`;
+  } else if (state.phase === "assign") {
+    pill = `<span class="step-pill update">Just updated</span>`;
+    const r = state.reassignedLast;
+    msg = `Centroids moved to the mean of their cluster. ${r === 0
+      ? "<b>No reassignments needed</b> — converged."
+      : `Next: re-assign points to the nearest centroid.`}`;
+  } else if (state.phase === "update") {
+    pill = `<span class="step-pill assign">Just assigned</span>`;
+    msg = `Each point joined its nearest centroid. <b>${state.reassignedLast}</b> point(s) changed cluster. Next: move centroids to cluster means.`;
+  } else if (state.phase === "done") {
+    pill = `<span class="step-pill done">Converged</span>`;
+    msg = `No points changed cluster on the last assign step — algorithm has converged after <b>${state.iter}</b> iteration(s). Inertia: <b>${state.inertia.toFixed(1)}</b>.`;
+  }
+  status.innerHTML = pill + " " + msg;
+
+  $("btn-step").disabled = state.phase === "done";
+  $("btn-iter").disabled = state.phase === "done";
+  $("btn-play").disabled = state.phase === "done";
+
+  // Legend
+  const legend = $("legend");
+  legend.innerHTML = "";
+  for (let i = 0; i < state.centroids.length; i++) {
+    const div = document.createElement("div");
+    div.className = "legend-item";
+    div.innerHTML = `<span class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></span>Cluster ${i + 1}`;
+    legend.appendChild(div);
+  }
+  const div = document.createElement("div");
+  div.className = "legend-item";
+  div.innerHTML = `<span class="swatch" style="background:#5c6593"></span>Unassigned`;
+  legend.appendChild(div);
+}
+
+function regenerateData() {
+  const gen = PRESETS[state.preset];
+  state.points = gen(mulberry32(state.dataSeed));
+  initCentroids();
+  draw();
+}
+
+function applyPreset(name) {
+  state.preset = name;
+  const newK = PRESET_DEFAULT_K[name];
+  if (newK) {
+    state.k = newK;
+    $("k").value = newK;
+    $("k-val").textContent = newK;
+  }
+  state.dataSeed = (state.dataSeed + 1) & 0x7fffffff;
+  state.initSeed = (state.initSeed + 1) & 0x7fffffff;
+  regenerateData();
+}
+
+function stopPlay() {
+  if (state.playTimer) { clearInterval(state.playTimer); state.playTimer = null; }
+  state.playing = false;
+  $("btn-play").textContent = "▶ Auto-play";
+}
+
+function startPlay() {
+  if (state.phase === "done") return;
+  state.playing = true;
+  $("btn-play").textContent = "❚❚ Pause";
+  state.playTimer = setInterval(() => {
+    const ok = nextStep();
+    draw();
+    if (!ok) stopPlay();
+  }, state.playSpeed);
+}
+
+// Wire up controls
+$("preset").addEventListener("change", (e) => {
+  stopPlay();
+  applyPreset(e.target.value);
+});
+$("k").addEventListener("input", (e) => {
+  state.k = parseInt(e.target.value, 10);
+  $("k-val").textContent = state.k;
+  stopPlay();
+  initCentroids();
+  draw();
+});
+$("init").addEventListener("change", (e) => {
+  state.initMethod = e.target.value;
+  stopPlay();
+  initCentroids();
+  draw();
+});
+$("btn-newdata").addEventListener("click", () => {
+  stopPlay();
+  state.dataSeed = (state.dataSeed * 1103515245 + 12345) & 0x7fffffff;
+  regenerateData();
+});
+$("btn-newinit").addEventListener("click", () => {
+  stopPlay();
+  state.initSeed = (state.initSeed * 1103515245 + 12345) & 0x7fffffff;
+  initCentroids();
+  draw();
+});
+$("btn-step").addEventListener("click", () => { stopPlay(); nextStep(); draw(); });
+$("btn-iter").addEventListener("click", () => { stopPlay(); fullIteration(); draw(); });
+$("btn-reset").addEventListener("click", () => {
+  stopPlay();
+  initCentroids();
+  draw();
+});
+$("btn-play").addEventListener("click", () => {
+  if (state.playing) stopPlay(); else startPlay();
+});
+$("speed").addEventListener("input", (e) => {
+  state.playSpeed = parseInt(e.target.value, 10);
+  $("speed-val").textContent = state.playSpeed + " ms";
+  if (state.playing) { stopPlay(); startPlay(); }
+});
+
+// Initial setup
+applyPreset("easy");
+resizeCanvas();
+</script>
+</body>
+</html>
