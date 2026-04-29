@@ -52,6 +52,18 @@ K-means minimizes **inertia** (also called WCSS — within-cluster sum of square
 | **Challenging — elongated** | 3 horizontal stripes (K-means struggles with non-spherical clusters) | 3 |
 | **Challenging — uneven** | 4 clusters with very different sizes and densities | 4 |
 | **Tricky — moons** | Two interlocking crescents (non-convex — K-means *can't* solve this correctly) | 2 |
+| **Empty** | Blank canvas — draw your own data with the tools below | 3 |
+
+### Drawing tools (place points and centroids on the canvas)
+A tool selector below the dataset controls determines what your clicks do:
+
+| Tool | What it does |
+|---|---|
+| **Add Point** | Click anywhere to drop a data point (starts unassigned). Works with any preset — you can mix custom points into a preset dataset. |
+| **Add Centroid** | Click to drop a centroid (only enabled when *Initialization* is set to **Manual**). |
+| **Erase** | Click on a point or centroid to remove it. |
+
+You can **drag any centroid** at any time to reposition it — even mid-iteration. To start completely from scratch, pick the **Empty** preset (or hit **Clear All Points**), then draw your own clusters.
 
 ### Initialization methods
 - **k-means++** (default) — smart seeding that picks each new centroid with probability proportional to its squared distance from the nearest existing one. Usually finds a near-optimal solution.
@@ -80,6 +92,7 @@ K-means minimizes **inertia** (also called WCSS — within-cluster sum of square
 3. **Try the moons preset.** Even with k-means++, K-means can't recover the two crescents — a perfect motivation for *why we need other algorithms* (DBSCAN, spectral clustering, etc.).
 4. **Use Manual init.** Place all K centroids in one corner. Auto-play. Watch K-means struggle. Now place them at the true cluster centers — converges instantly. The contrast drives home why **initialization matters**.
 5. **Drag a converged centroid.** Show that K-means will recover (or not, on hard data) on the next step.
+6. **Build a counterexample live.** Switch to the **Empty** preset, draw two interlocking spirals or a ring with **Add Point**, set Init to **Manual**, drop centroids, and watch K-means fail in real time — students see directly that K-means assumes convex, similarly-sized clusters.
 
 ---
 

@@ -117,6 +117,11 @@
   }
   button.primary:hover { background: linear-gradient(180deg, #4677dc, #2f5ab1); }
   button.ghost { background: transparent; }
+  button.tool.active {
+    background: #2c4d8a;
+    border-color: #4d7fe0;
+    color: white;
+  }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
   label {
     display: flex;
@@ -222,11 +227,27 @@
           <option value="elongated">Challenging — elongated clusters</option>
           <option value="uneven">Challenging — uneven sizes &amp; densities</option>
           <option value="moons">Tricky — two moons (non-convex)</option>
+          <option value="empty">Empty — draw your own data</option>
         </select>
       </label>
       <div class="row" style="margin-top:8px">
         <button id="btn-newdata">New Data</button>
         <button id="btn-newinit">New Init</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="btn-clear-points" class="ghost">Clear All Points</button>
+      </div>
+    </div>
+
+    <div>
+      <h2>Drawing Tool</h2>
+      <div class="row">
+        <button id="tool-point" class="tool active" data-tool="point">Add Point</button>
+        <button id="tool-centroid" class="tool" data-tool="centroid">Add Centroid</button>
+        <button id="tool-erase" class="tool" data-tool="erase">Erase</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4">
+        Click on the canvas to draw. Drag any centroid to reposition. Add Centroid requires <i>Manual</i> initialization.
       </div>
     </div>
 
@@ -400,6 +421,7 @@ const PRESETS = {
       ...genBlobs(rng, [[75, 25]], [2], [15])
     ];
   },
+  empty: () => [],
   moons: (rng) => {
     const pts = [];
     for (let i = 0; i < 100; i++) {
@@ -423,7 +445,7 @@ const PRESETS = {
 };
 
 const PRESET_DEFAULT_K = {
-  easy: 3, medium: 4, hard: 5, elongated: 3, uneven: 4, moons: 2
+  easy: 3, medium: 4, hard: 5, elongated: 3, uneven: 4, moons: 2, empty: 3
 };
 
 // ---------- K-means state machine ----------
@@ -443,7 +465,8 @@ const state = {
   playing: false,
   playTimer: null,
   playSpeed: 600,
-  dragIdx: null
+  dragIdx: null,
+  tool: "point"  // "point" | "centroid" | "erase"
 };
 
 function manualIncomplete() {
@@ -464,6 +487,9 @@ function initCentroids() {
   if (state.initMethod === "manual") {
     // Manual mode: keep any centroids already placed (up to k), wait for the rest.
     cs = (state.centroids || []).slice(0, k).map(c => ({ x: c.x, y: c.y }));
+  } else if (pts.length === 0) {
+    // No data yet — auto-init has nothing to seed from.
+    cs = [];
   } else if (state.initMethod === "random") {
     for (let i = 0; i < k; i++) {
       cs.push({ x: 10 + rng() * 80, y: 10 + rng() * 80 });
@@ -633,19 +659,31 @@ function drawCentroids() {
   }
 }
 
+function hexAlpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 function drawAssignmentLines() {
-  // Light lines from each point to its centroid — shown right after assign
-  if (state.phase !== "update") return;
-  ctx.strokeStyle = "rgba(255,255,255,0.06)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (const p of state.points) {
-    if (p.cluster < 0) continue;
-    const c = state.centroids[p.cluster];
-    ctx.moveTo(w2sX(p.x), w2sY(p.y));
-    ctx.lineTo(w2sX(c.x), w2sY(c.y));
+  // Skip when no assignments exist yet, or once the algorithm has converged.
+  if (state.phase === "init" || state.phase === "done") return;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  // Stroke per cluster so each line is colored by its cluster.
+  for (let k = 0; k < state.centroids.length; k++) {
+    const c = state.centroids[k];
+    ctx.strokeStyle = hexAlpha(PALETTE[k % PALETTE.length], 0.6);
+    ctx.beginPath();
+    let any = false;
+    for (const p of state.points) {
+      if (p.cluster !== k) continue;
+      ctx.moveTo(w2sX(p.x), w2sY(p.y));
+      ctx.lineTo(w2sX(c.x), w2sY(c.y));
+      any = true;
+    }
+    if (any) ctx.stroke();
   }
-  ctx.stroke();
 }
 
 function draw() {
@@ -670,7 +708,10 @@ function updateUI() {
   const status = $("status");
   status.classList.toggle("converged", state.phase === "done");
   let pill = "", msg = "";
-  if (manualIncomplete()) {
+  if (state.points.length === 0) {
+    pill = `<span class="step-pill">No data</span>`;
+    msg = `The canvas is empty. Switch to a preset above, or use the <b>Add Point</b> tool to draw your own data points.`;
+  } else if (manualIncomplete()) {
     const placed = state.centroids.length;
     pill = `<span class="step-pill assign">Place centroids</span>`;
     msg = `Click on the canvas to place centroid <b>${placed + 1}</b> of <b>${state.k}</b>. (You can drag any centroid to reposition it later.)`;
@@ -693,13 +734,20 @@ function updateUI() {
   }
   status.innerHTML = pill + " " + msg;
 
-  const blocked = state.phase === "done" || manualIncomplete();
+  const noData = state.points.length === 0;
+  const blocked = state.phase === "done" || manualIncomplete() || noData;
   $("btn-step").disabled = blocked;
   $("btn-iter").disabled = blocked;
   $("btn-play").disabled = blocked;
-  canvas.style.cursor = state.initMethod === "manual"
-    ? (state.dragIdx != null ? "grabbing" : "crosshair")
-    : "default";
+  if (state.dragIdx != null) {
+    canvas.style.cursor = "grabbing";
+  } else if (state.tool === "erase") {
+    canvas.style.cursor = "not-allowed";
+  } else {
+    canvas.style.cursor = "crosshair";
+  }
+  // Disable centroid tool when not in manual init.
+  $("tool-centroid").disabled = state.initMethod !== "manual";
 
   // Legend
   const legend = $("legend");
@@ -756,35 +804,97 @@ function startPlay() {
   }, state.playSpeed);
 }
 
-// ---------- Canvas mouse: click to place / drag to move (manual init only) ----------
+// ---------- Canvas mouse: click to draw, drag to move ----------
 function canvasPos(e) {
   const rect = canvas.getBoundingClientRect();
   return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
 }
 
-canvas.addEventListener("mousedown", (e) => {
-  if (state.initMethod !== "manual") return;
-  const { sx, sy } = canvasPos(e);
+// Any change to the dataset (add/remove point) invalidates iteration progress.
+function resetAlgoState() {
+  state.iter = 0;
+  state.phase = "init";
+  state.reassignedLast = null;
+  state.inertia = null;
+  for (const p of state.points) p.cluster = -1;
+}
 
-  // Hit-test existing centroids first (drag has priority over add)
-  for (let i = 0; i < state.centroids.length; i++) {
+function hitTestCentroid(sx, sy) {
+  for (let i = state.centroids.length - 1; i >= 0; i--) {
     const c = state.centroids[i];
     const dx = w2sX(c.x) - sx, dy = w2sY(c.y) - sy;
-    if (dx * dx + dy * dy < 16 * 16) {
-      state.dragIdx = i;
+    if (dx * dx + dy * dy < 16 * 16) return i;
+  }
+  return -1;
+}
+
+function hitTestPoint(sx, sy) {
+  let best = -1, bestD2 = 12 * 12;
+  for (let i = 0; i < state.points.length; i++) {
+    const p = state.points[i];
+    const dx = w2sX(p.x) - sx, dy = w2sY(p.y) - sy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; best = i; }
+  }
+  return best;
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  const { sx, sy } = canvasPos(e);
+  const wx = clamp(s2wX(sx), 0, 100);
+  const wy = clamp(s2wY(sy), 0, 100);
+
+  // ERASE: remove the nearest centroid or point under the cursor.
+  if (state.tool === "erase") {
+    const ci = hitTestCentroid(sx, sy);
+    if (ci >= 0) {
+      state.centroids.splice(ci, 1);
+      state.prevCentroids.splice(ci, 1);
+      // Re-number cluster labels: anything assigned to ci becomes unassigned;
+      // higher labels shift down by one.
+      for (const p of state.points) {
+        if (p.cluster === ci) p.cluster = -1;
+        else if (p.cluster > ci) p.cluster -= 1;
+      }
+      resetAlgoState();
       draw();
       return;
     }
+    const pi = hitTestPoint(sx, sy);
+    if (pi >= 0) {
+      state.points.splice(pi, 1);
+      resetAlgoState();
+      draw();
+    }
+    return;
   }
 
-  // Add a new centroid if there's room
-  if (state.centroids.length < state.k) {
-    const wx = clamp(s2wX(sx), 0, 100);
-    const wy = clamp(s2wY(sy), 0, 100);
-    state.centroids.push({ x: wx, y: wy });
-    state.prevCentroids = state.centroids.map(c => ({ x: c.x, y: c.y }));
+  // For non-erase tools, clicking on a centroid starts a drag (regardless of tool).
+  const ci = hitTestCentroid(sx, sy);
+  if (ci >= 0) {
+    state.dragIdx = ci;
     draw();
+    return;
   }
+
+  // ADD CENTROID: only meaningful in Manual init mode.
+  if (state.tool === "centroid") {
+    if (state.initMethod !== "manual") {
+      // Silently no-op: status bar will explain.
+      return;
+    }
+    if (state.centroids.length < state.k) {
+      state.centroids.push({ x: wx, y: wy });
+      state.prevCentroids = state.centroids.map(c => ({ x: c.x, y: c.y }));
+      draw();
+    }
+    return;
+  }
+
+  // ADD POINT (default tool).
+  state.points.push({ x: wx, y: wy, cluster: -1 });
+  resetAlgoState();
+  draw();
 });
 
 canvas.addEventListener("mousemove", (e) => {
@@ -819,6 +929,8 @@ $("init").addEventListener("change", (e) => {
   // Switching init method always starts fresh; no carry-over of prior positions.
   state.centroids = [];
   state.prevCentroids = [];
+  // Auto-pick the most useful tool for this init mode.
+  setTool(state.initMethod === "manual" ? "centroid" : "point");
   initCentroids();
   draw();
 });
@@ -853,6 +965,25 @@ $("speed").addEventListener("input", (e) => {
   state.playSpeed = parseInt(e.target.value, 10);
   $("speed-val").textContent = state.playSpeed + " ms";
   if (state.playing) { stopPlay(); startPlay(); }
+});
+
+// Drawing tool buttons
+function setTool(name) {
+  state.tool = name;
+  for (const b of document.querySelectorAll("button.tool")) {
+    b.classList.toggle("active", b.dataset.tool === name);
+  }
+  draw();
+}
+for (const b of document.querySelectorAll("button.tool")) {
+  b.addEventListener("click", () => setTool(b.dataset.tool));
+}
+
+$("btn-clear-points").addEventListener("click", () => {
+  stopPlay();
+  state.points = [];
+  resetAlgoState();
+  draw();
 });
 
 // Initial setup
